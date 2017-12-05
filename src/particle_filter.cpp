@@ -33,15 +33,16 @@ void ParticleFilter::init(double x, double y, double theta, double std[]) {
 	normal_distribution<double> dist_y(y, std[1]);
 	normal_distribution<double> dist_theta(theta, std[2]);
 
-	num_particles = 10;
+	num_particles = 100;
 	for (int i = 0; i < num_particles; i++) {
 		Particle p;
 		p.id = i;
 		p.x = dist_x(gen);
 		p.y = dist_y(gen);
 		p.theta = dist_theta(gen);
-		p.weight = 0.0;
+		p.weight = 1.0;
 		particles.push_back(p);
+		weights.push_back(p.weight);
 	}
 	is_initialized = true;
 	cout << "Initialized" << endl;
@@ -121,42 +122,32 @@ void ParticleFilter::updateWeights(double sensor_range, double std_landmark[],
 		double p_y = particles[i].y;
 		double p_theta = particles[i].theta;
 
-		// create a vector to hold the map landmark locations predicted to be within sensor range of the particle
 		vector<LandmarkObs> predictions;
-
-		// for each map landmark...
-		for (unsigned int j = 0; j < map_landmarks.landmark_list.size(); j++) {
-
-			// get id and x,y coordinates
-			float lm_x = map_landmarks.landmark_list[j].x_f;
-			float lm_y = map_landmarks.landmark_list[j].y_f;
-			int lm_id = map_landmarks.landmark_list[j].id_i;
-
-			// only consider landmarks within sensor range of the particle (rather than using the "dist" method considering a circular 
-			// region around the particle, this considers a rectangular region but is computationally faster)
-			if (fabs(lm_x - p_x) <= sensor_range && fabs(lm_y - p_y) <= sensor_range) {
-
-				// add prediction to vector
-				predictions.push_back(LandmarkObs{ lm_id, lm_x, lm_y });
+		for (auto lmk : map_landmarks.landmark_list)
+		{
+			// consider landmark within sensor range
+			if (sqrt(pow((double)lmk.x_f - p_x, 2) + pow((double)lmk.y_f - p_y, 2)) < sensor_range)
+			{
+				predictions.push_back(LandmarkObs{ lmk.id_i, (double)lmk.x_f, (double)lmk.y_f });
 			}
 		}
 
-
-		// create and populate a copy of the list of observations transformed from vehicle coordinates to map coordinates
-		vector<LandmarkObs> transformed_os;
-		for (unsigned int j = 0; j < observations.size(); j++) {
-			double t_x = cos(p_theta)*observations[j].x - sin(p_theta)*observations[j].y + p_x;
-			double t_y = sin(p_theta)*observations[j].x + cos(p_theta)*observations[j].y + p_y;
-			transformed_os.push_back(LandmarkObs{ observations[j].id, t_x, t_y });
+		// transform observations to map coordinates
+		vector<LandmarkObs> map_observations;
+		for (auto& obs : observations)
+		{
+			double x_m = p_x + (cos(p_theta) * obs.x) - (sin(p_theta) * obs.y);
+			double y_m = p_y + (sin(p_theta) * obs.x) + (cos(p_theta) * obs.y);
+			map_observations.push_back(LandmarkObs{ obs.id, x_m, y_m });
 		}
 
 		// perform dataAssociation for the predictions and transformed observations on current particle
-		dataAssociation(predictions, transformed_os);
+		dataAssociation(predictions, map_observations);
 
 		// reinit weight
 		particles[i].weight = 1.0;
 		// calculate and update weight for each transformed observation
-		for (auto map_obs : transformed_os)
+		for (auto map_obs : map_observations)
 		{
 			double pr_x, pr_y;
 			// get the x,y coordinates of the prediction associated with the current observation
@@ -174,54 +165,10 @@ void ParticleFilter::updateWeights(double sensor_range, double std_landmark[],
 			particles[i].weight *= gauss_norm * exp(-exponent);
 			//cout << "obs_weight " << gauss_norm * exp(-exponent) << "\n";
 		}
+		weights[i] = particles[i].weight;
 		//cout
 	}
 
-
-
-
-	//double sig_x = std_landmark[0];
-	//double sig_y = std_landmark[1];
-	//double gauss_norm = (1.0 / (2.0 * M_PI * sig_x * sig_y));
-	//// loop through particles
-	//for (auto&& p : particles)
-	//{
-	//	vector<LandmarkObs> predictions;
-	//	for (int id_i=0; id_i < map_landmarks.landmark_list.size(); id_i++)
-	//	{
-	//		auto lmk = map_landmarks.landmark_list[id_i];
-	//		// consider landmark within sensor range
-	//		if (fabs((double)lmk.x_f - p.x) <= sensor_range && fabs((double)lmk.y_f - p.y) <= sensor_range)
-	//		{
-	//			predictions.push_back(LandmarkObs{ id_i, (double)lmk.x_f, (double)lmk.y_f });
-	//		}
-	//	}
-
-	//	// convert observations to map coordinates
-	//	vector<LandmarkObs> map_observations;
-	//	for (auto obs : observations)
-	//	{
-	//		double x_m = p.x + (cos(p.theta) * obs.x) - (sin(p.theta) * obs.y);
-	//		double y_m = p.y + (sin(p.theta) * obs.x) + (cos(p.theta * obs.y));
-	//		map_observations.push_back(LandmarkObs{ obs.id, x_m, y_m });
-	//	}
-	//	// association
-	//	dataAssociation(predictions, map_observations);
-
-	//	p.weight = 1.0;
-	//	// calculate and update weight for each transformed observation
-	//	for (auto map_obs : map_observations)
-	//	{
-	//		double exponent = pow((map_obs.x - predictions[map_obs.id].x), 2) / (2 * pow(sig_x, 2)) + pow((map_obs.y - predictions[map_obs.id].y), 2) / (2 * pow(sig_y, 2));
-	//		//cout << map_obs.id << " pred " << predictions[map_obs.id].x << " " << predictions[map_obs.id].y << "obs " << map_obs.x << " " << map_obs.y << "\t";
-	//		//cout << "exp " << exponent << " ";
-	//		// calculate weight using normalization terms and exponent
-	//		p.weight *= gauss_norm * exp(-exponent);
-	//		//cout << "obs_weight " << gauss_norm * exp(-exponent) << "\n";
-	//	}
-	//	//cout.precision(17);
-	//	cout << "w " << p.weight << "\t";
-	//}
 }
 
 void ParticleFilter::resample() {
