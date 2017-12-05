@@ -57,7 +57,7 @@ void ParticleFilter::prediction(double delta_t, double std_pos[], double velocit
 	normal_distribution<double> noise_x(0, std_pos[0]);
 	normal_distribution<double> noise_y(0, std_pos[1]);
 	normal_distribution<double> noise_theta(0, std_pos[2]);
-	if (abs(yaw_rate) > 0.001) 
+	if (abs(yaw_rate) > 0.000001) 
 	{
 		for (auto&& p : particles)
 		{
@@ -70,8 +70,8 @@ void ParticleFilter::prediction(double delta_t, double std_pos[], double velocit
 	{
 		for (auto&& p : particles)
 		{
-			p.x += velocity / yaw_rate * (sin(p.theta + yaw_rate*delta_t) - sin(p.theta)) + noise_x(gen);
-			p.y += velocity / yaw_rate * (cos(p.theta) - cos(p.theta + yaw_rate*delta_t)) + noise_y(gen);
+			p.x += velocity * delta_t * cos(p.theta) + noise_x(gen);
+			p.y += velocity * delta_t * sin(p.theta) + noise_y(gen);
 		}
 	}
 }
@@ -111,6 +111,7 @@ void ParticleFilter::updateWeights(double sensor_range, double std_landmark[],
 	//   and the following is a good resource for the actual equation to implement (look at equation 
 	//   3.33
 	//   http://planning.cs.uiuc.edu/node99.html
+
 	// for each particle...
 	double sig_x = std_landmark[0];
 	double sig_y = std_landmark[1];
